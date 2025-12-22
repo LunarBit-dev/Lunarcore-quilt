@@ -80,18 +80,55 @@ if (MetadataHelper.isModLoaded("quilted_fabric_api")) {
 }
 ```
 
-## 🚀 Quick Start
+## Getting Started
 
-### 1. Add Dependency
+### Installation
 
-In your `build.gradle`:
+**From GitHub Packages (Recommended):**
+
+Add to your `pom.xml`:
+```xml
+<repositories>
+  <repository>
+    <id>github</id>
+    <url>https://maven.pkg.github.com/Lunarbit-dev/lunarcore-maven</url>
+  </repository>
+</repositories>
+
+<dependencies>
+  <dependency>
+    <groupId>dev.lunarbit.lunarcore</groupId>
+    <artifactId>lunarcore-quilt</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+  </dependency>
+</dependencies>
+```
+
+Authentication in `~/.m2/settings.xml`:
+```xml
+<servers>
+  <server>
+    <id>github</id>
+    <username>YOUR_GITHUB_USERNAME</username>
+    <password>YOUR_GITHUB_TOKEN</password>
+  </server>
+</servers>
+```
+
+**For Gradle projects:**
 ```gradle
 repositories {
-    maven { url 'https://maven.lunarbit.dev' }
+    maven {
+        url = uri("https://maven.pkg.github.com/Lunarbit-dev/lunarcore-maven")
+        credentials {
+            username = project.findProperty("gpr.user") ?: System.getenv("USERNAME")
+            password = project.findProperty("gpr.token") ?: System.getenv("TOKEN")
+        }
+    }
 }
 
 dependencies {
-    modImplementation "dev.lunarbit:lunarcore-quilt:1.0.0+1.20.6"
+    modImplementation "dev.lunarbit.lunarcore:lunarcore-quilt:1.0.0-SNAPSHOT"
 }
 ```
 

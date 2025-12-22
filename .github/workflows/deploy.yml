@@ -1,17 +1,20 @@
-name: Deploy to Nexus
+name: Deploy to GitHub Packages
 
 on:
   push:
     branches:
-      - main
-      - '**'  # All branches for snapshot builds
+      - main      # Releases and snapshots from main
+      - '**'      # Snapshots from any branch
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
 
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Set up JDK 21
@@ -19,88 +22,169 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '21'
-          cache: 'gradle'
+          cache: 'maven'
 
-      - name: Make gradlew executable
-        run: chmod +x ./gradlew
-
-      - name: Determine version and repository
+      - name: Extract version from pom.xml
         id: version
         run: |
-          VERSION=$(./gradlew properties -q | grep "^version:" | awk '{print $2}')
+          VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)
           echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Detected version: $VERSION"
 
+          # Determine if snapshot or release
           if [[ "$VERSION" == *-SNAPSHOT ]]; then
-            echo "repository=maven-snapshots" >> $GITHUB_OUTPUT
             echo "is_snapshot=true" >> $GITHUB_OUTPUT
-            echo "Deploying SNAPSHOT version $VERSION to maven-snapshots"
+            echo "build_type=Snapshot" >> $GITHUB_OUTPUT
+            echo "📦 Building SNAPSHOT version $VERSION"
           else
-            echo "repository=maven-releases" >> $GITHUB_OUTPUT
             echo "is_snapshot=false" >> $GITHUB_OUTPUT
+            echo "build_type=Release" >> $GITHUB_OUTPUT
 
             # Only deploy releases from main branch
             if [[ "${{ github.ref }}" != "refs/heads/main" ]]; then
-              echo "Release versions can only be deployed from main branch"
+              echo "::error::Release versions can only be deployed from main branch"
+              echo "::error::Current branch: ${{ github.ref }}"
+              echo "::error::Version: $VERSION (release)"
+              echo "::notice::To deploy this version, either:"
+              echo "::notice::  1. Push to main branch, OR"
+              echo "::notice::  2. Change version to include -SNAPSHOT suffix"
               exit 1
             fi
-            echo "Deploying release version $VERSION to maven-releases"
+            echo "🚀 Building RELEASE version $VERSION"
           fi
 
-      - name: Build and test
-        run: ./gradlew clean build --no-daemon
-        env:
-          NEXUS_USER: ${{ secrets.NEXUS_USER }}
-          NEXUS_PASSWORD: ${{ secrets.NEXUS_PASSWORD }}
+      - name: Configure Maven settings
+        run: |
+          mkdir -p ~/.m2
+          cat > ~/.m2/settings.xml << 'EOF'
+          <settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
+                    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                    xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0
+                                        http://maven.apache.org/xsd/settings-1.0.0.xsd">
+            <servers>
+              <server>
+                <id>github</id>
+                <username>${env.GITHUB_ACTOR}</username>
+                <password>${env.GITHUB_TOKEN}</password>
+              </server>
+            </servers>
+          </settings>
+          EOF
+          echo "✓ Maven settings.xml configured"
 
-      - name: Publish to Nexus
-        run: ./gradlew publish --no-daemon
+      - name: Build project
+        run: |
+          echo "Building project..."
+          mvn clean package -B -V
+          echo "✓ Build completed successfully"
         env:
-          NEXUS_USER: ${{ secrets.NEXUS_USER }}
-          NEXUS_PASSWORD: ${{ secrets.NEXUS_PASSWORD }}
-          NEXUS_REPOSITORY: ${{ steps.version.outputs.repository }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run tests
+        run: |
+          echo "Running tests..."
+          mvn test -B
+          echo "✓ Tests passed"
+        continue-on-error: false
+
+      - name: Deploy to GitHub Packages
+        run: |
+          echo "Deploying to GitHub Packages..."
+          echo "Repository: https://maven.pkg.github.com/Lunarbit-dev/lunarcore-maven"
+          echo "Version: ${{ steps.version.outputs.version }}"
+          echo "Type: ${{ steps.version.outputs.build_type }}"
+
+          mvn deploy -B -DskipTests
+
+          echo "✓ Deployment completed successfully"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload build artifacts
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: lunarcore-quilt-${{ steps.version.outputs.version }}
+          name: maven-artifacts-${{ steps.version.outputs.version }}
           path: |
-            build/libs/*.jar
-            !build/libs/*-dev.jar
+            target/*.jar
+            target/*.pom
+            !target/*-sources.jar
+            !target/*-javadoc.jar
           retention-days: 30
 
       - name: Report deployment failure
         if: failure()
         run: |
-          echo "::error::Deployment failed for version ${{ steps.version.outputs.version }}"
-          echo "::error::Check Nexus credentials and repository configuration"
-          echo "::error::Repository: ${{ steps.version.outputs.repository }}"
-          echo "::error::Nexus URL: https://maven.lunarbit.dev"
+          echo "::error::═══════════════════════════════════════════════════════════"
+          echo "::error::  DEPLOYMENT FAILED"
+          echo "::error::═══════════════════════════════════════════════════════════"
+          echo "::error::Version: ${{ steps.version.outputs.version }}"
+          echo "::error::Type: ${{ steps.version.outputs.build_type }}"
+          echo "::error::Branch: ${{ github.ref }}"
+          echo "::error::Repository: https://maven.pkg.github.com/Lunarbit-dev/lunarcore-maven"
+          echo "::error::"
+          echo "::error::Possible causes:"
+          echo "::error::  - Build or test failures"
+          echo "::error::  - Version already exists (releases cannot be overwritten)"
+          echo "::error::  - GitHub token permissions issue"
+          echo "::error::  - Network connectivity issues"
+          echo "::error::"
+          echo "::error::Check the logs above for detailed error messages"
           exit 1
 
-      - name: Deployment summary
+      - name: Create deployment summary
         if: success()
         run: |
-          echo "## Deployment Successful! :rocket:" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Version:** ${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Repository:** ${{ steps.version.outputs.repository }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Nexus URL:** https://maven.lunarbit.dev" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          if [[ "${{ steps.version.outputs.is_snapshot }}" == "true" ]]; then
-            echo "**Type:** Snapshot Build" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "**Type:** Release Build" >> $GITHUB_STEP_SUMMARY
-          fi
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Usage" >> $GITHUB_STEP_SUMMARY
-          echo '```gradle' >> $GITHUB_STEP_SUMMARY
-          echo "repositories {" >> $GITHUB_STEP_SUMMARY
-          echo "    maven { url 'https://maven.lunarbit.dev/repository/${{ steps.version.outputs.repository }}' }" >> $GITHUB_STEP_SUMMARY
-          echo "}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "dependencies {" >> $GITHUB_STEP_SUMMARY
-          echo "    modImplementation 'dev.lunarbit.lunarcore:lunarcore-quilt:${{ steps.version.outputs.version }}'" >> $GITHUB_STEP_SUMMARY
-          echo "}" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
+          cat >> $GITHUB_STEP_SUMMARY << 'EOF'
+          ## 🚀 Deployment Successful!
+
+          **Version:** `${{ steps.version.outputs.version }}`
+          **Type:** ${{ steps.version.outputs.build_type }}
+          **Repository:** `https://maven.pkg.github.com/Lunarbit-dev/lunarcore-maven`
+          **Branch:** `${{ github.ref_name }}`
+          **Commit:** `${{ github.sha }}`
+
+          ### 📦 Using This Package
+
+          Add to your `pom.xml`:
+
+          ```xml
+          <repositories>
+            <repository>
+              <id>github</id>
+              <url>https://maven.pkg.github.com/Lunarbit-dev/lunarcore-maven</url>
+            </repository>
+          </repositories>
+
+          <dependencies>
+            <dependency>
+              <groupId>dev.lunarbit.lunarcore</groupId>
+              <artifactId>lunarcore-quilt</artifactId>
+              <version>${{ steps.version.outputs.version }}</version>
+            </dependency>
+          </dependencies>
+          ```
+
+          ### 🔐 Authentication
+
+          Add to your `~/.m2/settings.xml`:
+
+          ```xml
+          <servers>
+            <server>
+              <id>github</id>
+              <username>YOUR_GITHUB_USERNAME</username>
+              <password>YOUR_PERSONAL_ACCESS_TOKEN</password>
+            </server>
+          </servers>
+          ```
+
+          ### 📊 Deployment Info
+
+          - **Workflow:** ${{ github.workflow }}
+          - **Run ID:** ${{ github.run_id }}
+          - **Actor:** @${{ github.actor }}
+          - **Timestamp:** $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+
+          EOF
 
