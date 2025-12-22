@@ -1,0 +1,41 @@
+{
+	"schema_version": 1,
+	"quilt_loader": {
+		"group": "${group}",
+		"id": "lunarcore-quilt",
+		"version": "${version}",
+		"metadata": {
+			"name": "LunarCore Quilt SDK",
+			"description": "Quilt-native foundational SDK for mod development. Provides lifecycle helpers, logging, configuration, and metadata utilities following the LunarCore specification.",
+			"contributors": {
+				"LunarBit Studios": "Owner"
+			},
+			"contact": {
+				"homepage": "https://github.com/LunarBit-dev/LunarCore-quilt",
+				"issues": "https://github.com/LunarBit-dev/LunarCore-quilt/issues",
+				"sources": "https://github.com/LunarBit-dev/LunarCore-quilt"
+			},
+			"icon": "assets/lunarcore-quilt/icon.png",
+			"license": "MIT"
+		},
+		"intermediate_mappings": "net.fabricmc:intermediary",
+		"entrypoints": {
+			"init": "dev.lunarbit.lunarcore.LunarCoreQuilt"
+		},
+		"depends": [
+			{
+				"id": "quilt_loader",
+				"versions": ">=0.19.1"
+			},
+			{
+				"id": "quilted_fabric_api",
+				"versions": ">=7.0.2"
+			},
+			{
+				"id": "minecraft",
+				"versions": ">=1.20"
+			}
+		]
+	},
+	"mixin": "lunarcore-quilt.mixins.json"
+}

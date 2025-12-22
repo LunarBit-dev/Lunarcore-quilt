@@ -1,0 +1,106 @@
+name: Deploy to Nexus
+
+on:
+  push:
+    branches:
+      - main
+      - '**'  # All branches for snapshot builds
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+          cache: 'gradle'
+
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+
+      - name: Determine version and repository
+        id: version
+        run: |
+          VERSION=$(./gradlew properties -q | grep "^version:" | awk '{print $2}')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+          if [[ "$VERSION" == *-SNAPSHOT ]]; then
+            echo "repository=maven-snapshots" >> $GITHUB_OUTPUT
+            echo "is_snapshot=true" >> $GITHUB_OUTPUT
+            echo "Deploying SNAPSHOT version $VERSION to maven-snapshots"
+          else
+            echo "repository=maven-releases" >> $GITHUB_OUTPUT
+            echo "is_snapshot=false" >> $GITHUB_OUTPUT
+
+            # Only deploy releases from main branch
+            if [[ "${{ github.ref }}" != "refs/heads/main" ]]; then
+              echo "Release versions can only be deployed from main branch"
+              exit 1
+            fi
+            echo "Deploying release version $VERSION to maven-releases"
+          fi
+
+      - name: Build and test
+        run: ./gradlew clean build --no-daemon
+        env:
+          NEXUS_USER: ${{ secrets.NEXUS_USER }}
+          NEXUS_PASSWORD: ${{ secrets.NEXUS_PASSWORD }}
+
+      - name: Publish to Nexus
+        run: ./gradlew publish --no-daemon
+        env:
+          NEXUS_USER: ${{ secrets.NEXUS_USER }}
+          NEXUS_PASSWORD: ${{ secrets.NEXUS_PASSWORD }}
+          NEXUS_REPOSITORY: ${{ steps.version.outputs.repository }}
+
+      - name: Upload build artifacts
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lunarcore-quilt-${{ steps.version.outputs.version }}
+          path: |
+            build/libs/*.jar
+            !build/libs/*-dev.jar
+          retention-days: 30
+
+      - name: Report deployment failure
+        if: failure()
+        run: |
+          echo "::error::Deployment failed for version ${{ steps.version.outputs.version }}"
+          echo "::error::Check Nexus credentials and repository configuration"
+          echo "::error::Repository: ${{ steps.version.outputs.repository }}"
+          echo "::error::Nexus URL: https://maven.lunarbit.dev"
+          exit 1
+
+      - name: Deployment summary
+        if: success()
+        run: |
+          echo "## Deployment Successful! :rocket:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** ${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Repository:** ${{ steps.version.outputs.repository }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Nexus URL:** https://maven.lunarbit.dev" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [[ "${{ steps.version.outputs.is_snapshot }}" == "true" ]]; then
+            echo "**Type:** Snapshot Build" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "**Type:** Release Build" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Usage" >> $GITHUB_STEP_SUMMARY
+          echo '```gradle' >> $GITHUB_STEP_SUMMARY
+          echo "repositories {" >> $GITHUB_STEP_SUMMARY
+          echo "    maven { url 'https://maven.lunarbit.dev/repository/${{ steps.version.outputs.repository }}' }" >> $GITHUB_STEP_SUMMARY
+          echo "}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "dependencies {" >> $GITHUB_STEP_SUMMARY
+          echo "    modImplementation 'dev.lunarbit.lunarcore:lunarcore-quilt:${{ steps.version.outputs.version }}'" >> $GITHUB_STEP_SUMMARY
+          echo "}" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
