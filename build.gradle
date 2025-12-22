@@ -128,22 +128,13 @@ publishing {
 
 	repositories {
 		maven {
-			name = 'Nexus'
-
-			// Determine repository based on version (snapshot vs release)
-			def repositoryName = version.endsWith('-SNAPSHOT') ? 'maven-snapshots' : 'maven-releases'
-			// Allow override from environment variable (used by CI)
-			repositoryName = System.getenv('NEXUS_REPOSITORY') ?: repositoryName
-
-			url = "https://maven.lunarbit.dev/repository/${repositoryName}"
+			name = 'GitHubPackages'
+			url = uri('https://maven.pkg.github.com/Lunarbit-dev/lunarcore-maven')
 
 			credentials {
-				username = System.getenv('NEXUS_USER') ?: project.findProperty('nexusUser') ?: ''
-				password = System.getenv('NEXUS_PASSWORD') ?: project.findProperty('nexusPassword') ?: ''
+				username = System.getenv('GITHUB_ACTOR') ?: project.findProperty('gpr.user') ?: ''
+				password = System.getenv('GITHUB_TOKEN') ?: project.findProperty('gpr.token') ?: ''
 			}
-
-			// Allow insecure connections if needed (Cloudflare Tunnel might have cert issues)
-			allowInsecureProtocol = false
 		}
 	}
 }

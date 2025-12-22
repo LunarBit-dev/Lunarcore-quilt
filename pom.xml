@@ -42,7 +42,9 @@
         <maven.compiler.target>21</maven.compiler.target>
         <minecraft.version>1.20.6</minecraft.version>
         <quilt.loader.version>0.26.3</quilt.loader.version>
+        <quilt.mappings.version>1.20.6+build.6</quilt.mappings.version>
         <quilted.fabric.api.version>10.0.0-alpha.3+0.100.4-1.20.6</quilted.fabric.api.version>
+        <mixin.version>0.8.5</mixin.version>
     </properties>
 
     <repositories>
@@ -61,14 +63,56 @@
             <name>Minecraft Libraries</name>
             <url>https://libraries.minecraft.net/</url>
         </repository>
+        <repository>
+            <id>sponge</id>
+            <name>Sponge Maven Repository</name>
+            <url>https://repo.spongepowered.org/maven</url>
+        </repository>
+        <repository>
+            <id>fabricmc</id>
+            <name>Fabric Maven</name>
+            <url>https://maven.fabricmc.net/</url>
+        </repository>
     </repositories>
 
     <dependencies>
+        <!-- Minecraft Client (provided at runtime by Quilt) -->
+        <dependency>
+            <groupId>com.mojang</groupId>
+            <artifactId>minecraft</artifactId>
+            <version>${minecraft.version}</version>
+            <scope>provided</scope>
+        </dependency>
+
         <!-- Quilt Loader -->
         <dependency>
             <groupId>org.quiltmc</groupId>
             <artifactId>quilt-loader</artifactId>
             <version>${quilt.loader.version}</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- Quilt Standard Libraries (QSL) Base -->
+        <dependency>
+            <groupId>org.quiltmc.qsl.core</groupId>
+            <artifactId>qsl_base</artifactId>
+            <version>9.0.0-alpha.1+1.20.6</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- Quilted Fabric API -->
+        <dependency>
+            <groupId>org.quiltmc.quilted-fabric-api</groupId>
+            <artifactId>quilted-fabric-api</artifactId>
+            <version>${quilted.fabric.api.version}</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- Mixin -->
+        <dependency>
+            <groupId>org.spongepowered</groupId>
+            <artifactId>mixin</artifactId>
+            <version>${mixin.version}</version>
             <scope>provided</scope>
         </dependency>
 

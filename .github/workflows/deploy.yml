@@ -22,12 +22,15 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '21'
-          cache: 'maven'
+          cache: 'gradle'
 
-      - name: Extract version from pom.xml
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+
+      - name: Extract version from gradle.properties
         id: version
         run: |
-          VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout 2>/dev/null | tail -n1)
+          VERSION=$(grep "^version" gradle.properties | cut -d'=' -f2 | tr -d ' ')
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Detected version: $VERSION"
 
@@ -53,29 +56,10 @@ jobs:
             echo "🚀 Building RELEASE version $VERSION"
           fi
 
-      - name: Configure Maven settings
-        run: |
-          mkdir -p ~/.m2
-          cat > ~/.m2/settings.xml << 'EOF'
-          <settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
-                    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-                    xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0
-                                        http://maven.apache.org/xsd/settings-1.0.0.xsd">
-            <servers>
-              <server>
-                <id>github</id>
-                <username>${env.GITHUB_ACTOR}</username>
-                <password>${env.GITHUB_TOKEN}</password>
-              </server>
-            </servers>
-          </settings>
-          EOF
-          echo "✓ Maven settings.xml configured"
-
       - name: Build project
         run: |
-          echo "Building project..."
-          mvn clean package -B -V
+          echo "Building Quilt mod with Gradle..."
+          ./gradlew clean build --no-daemon --stacktrace
           echo "✓ Build completed successfully"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -83,33 +67,32 @@ jobs:
       - name: Run tests
         run: |
           echo "Running tests..."
-          mvn test -B
+          ./gradlew test --no-daemon
           echo "✓ Tests passed"
         continue-on-error: false
 
-      - name: Deploy to GitHub Packages
+      - name: Publish to GitHub Packages
         run: |
-          echo "Deploying to GitHub Packages..."
+          echo "Publishing to GitHub Packages..."
           echo "Repository: https://maven.pkg.github.com/Lunarbit-dev/lunarcore-maven"
           echo "Version: ${{ steps.version.outputs.version }}"
           echo "Type: ${{ steps.version.outputs.build_type }}"
 
-          mvn deploy -B -DskipTests
+          ./gradlew publish --no-daemon --stacktrace
 
-          echo "✓ Deployment completed successfully"
+          echo "✓ Publication completed successfully"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_ACTOR: ${{ github.actor }}
 
       - name: Upload build artifacts
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: maven-artifacts-${{ steps.version.outputs.version }}
+          name: lunarcore-quilt-${{ steps.version.outputs.version }}
           path: |
-            target/*.jar
-            target/*.pom
-            !target/*-sources.jar
-            !target/*-javadoc.jar
+            build/libs/*.jar
+            !build/libs/*-dev.jar
           retention-days: 30
 
       - name: Report deployment failure
@@ -124,12 +107,12 @@ jobs:
           echo "::error::Repository: https://maven.pkg.github.com/Lunarbit-dev/lunarcore-maven"
           echo "::error::"
           echo "::error::Possible causes:"
-          echo "::error::  - Build or test failures"
+          echo "::error::  - Build or test failures (check logs above)"
           echo "::error::  - Version already exists (releases cannot be overwritten)"
           echo "::error::  - GitHub token permissions issue"
-          echo "::error::  - Network connectivity issues"
+          echo "::error::  - Dependency resolution problems"
           echo "::error::"
-          echo "::error::Check the logs above for detailed error messages"
+          echo "::error::Check the Gradle build logs above for detailed error messages"
           exit 1
 
       - name: Create deployment summary
@@ -146,7 +129,26 @@ jobs:
 
           ### 📦 Using This Package
 
-          Add to your `pom.xml`:
+          #### Gradle
+
+          ```gradle
+          repositories {
+              maven {
+                  name = "GitHubPackages"
+                  url = uri("https://maven.pkg.github.com/Lunarbit-dev/lunarcore-maven")
+                  credentials {
+                      username = project.findProperty("gpr.user") ?: System.getenv("USERNAME")
+                      password = project.findProperty("gpr.token") ?: System.getenv("TOKEN")
+                  }
+              }
+          }
+
+          dependencies {
+              modImplementation "dev.lunarbit.lunarcore:lunarcore-quilt:${{ steps.version.outputs.version }}"
+          }
+          ```
+
+          #### Maven
 
           ```xml
           <repositories>
@@ -167,8 +169,13 @@ jobs:
 
           ### 🔐 Authentication
 
-          Add to your `~/.m2/settings.xml`:
+          **Gradle:** Add to `~/.gradle/gradle.properties`:
+          ```properties
+          gpr.user=YOUR_GITHUB_USERNAME
+          gpr.token=YOUR_PERSONAL_ACCESS_TOKEN
+          ```
 
+          **Maven:** Add to `~/.m2/settings.xml`:
           ```xml
           <servers>
             <server>
@@ -184,6 +191,7 @@ jobs:
           - **Workflow:** ${{ github.workflow }}
           - **Run ID:** ${{ github.run_id }}
           - **Actor:** @${{ github.actor }}
+          - **Build Tool:** Gradle with Quilt Loom
           - **Timestamp:** $(date -u +"%Y-%m-%d %H:%M:%S UTC")
 
           EOF
