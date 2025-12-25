@@ -237,12 +237,12 @@
         <repository>
             <id>github</id>
             <name>GitHub Packages</name>
-            <url>https://maven.pkg.github.com/Lunarbit-dev/lunarcore-maven</url>
+            <url>https://maven.pkg.github.com/LunarBit-dev/LunarCore-quilt</url>
         </repository>
         <snapshotRepository>
             <id>github</id>
             <name>GitHub Packages</name>
-            <url>https://maven.pkg.github.com/Lunarbit-dev/lunarcore-maven</url>
+            <url>https://maven.pkg.github.com/LunarBit-dev/LunarCore-quilt</url>
         </snapshotRepository>
     </distributionManagement>
 </project>

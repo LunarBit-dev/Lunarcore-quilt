@@ -1,0 +1,47 @@
+pipeline {
+    agent any
+
+    tools {
+        jdk 'jdk21'
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Grant Gradle Permissions') {
+            steps {
+                sh 'chmod +x ./gradlew'
+            }
+        }
+
+        stage('Build') {
+            steps {
+                sh './gradlew clean build'
+            }
+        }
+
+        stage('Publish to GitHub Packages') {
+            steps {
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: 'github-packages',
+                        usernameVariable: 'GITHUB_USER',
+                        passwordVariable: 'GITHUB_TOKEN'
+                    )
+                ]) {
+                    sh './gradlew publish -PgithubUser=$GITHUB_USER -PgithubToken=$GITHUB_TOKEN'
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            archiveArtifacts artifacts: 'build/libs/*.jar', fingerprint: true
+        }
+    }
+}

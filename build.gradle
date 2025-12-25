@@ -93,8 +93,8 @@ publishing {
 		mavenJava(MavenPublication) {
 			from components.java
 
-			groupId = project.maven_group
-			artifactId = project.archives_base_name
+			groupId = 'dev.lunarbit'
+			artifactId = 'lunarcore-quilt'
 			version = project.version
 
 			pom {
@@ -128,12 +128,11 @@ publishing {
 
 	repositories {
 		maven {
-			name = 'GitHubPackages'
-			url = uri('https://maven.pkg.github.com/Lunarbit-dev/lunarcore-maven')
-
+			name = "GitHubPackages"
+			url = uri("https://maven.pkg.github.com/LunarBit-dev/LunarCore-quilt")
 			credentials {
-				username = System.getenv('GITHUB_ACTOR') ?: project.findProperty('gpr.user') ?: ''
-				password = System.getenv('GITHUB_TOKEN') ?: project.findProperty('gpr.token') ?: ''
+				username = project.findProperty("githubUser") ?: System.getenv("GITHUB_USER")
+				password = project.findProperty("githubToken") ?: System.getenv("GITHUB_TOKEN")
 			}
 		}
 	}
